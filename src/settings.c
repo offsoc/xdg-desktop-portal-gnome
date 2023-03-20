@@ -20,8 +20,10 @@
 
 #include "config.h"
 
+#include <adwaita.h>
 #include <time.h>
 #include <string.h>
+#include <gdesktop-enums.h>
 #include <glib/gi18n.h>
 #include <gio/gio.h>
 
@@ -122,6 +124,23 @@ get_theme_value (const char *key)
   return g_variant_new_string (theme);
 }
 
+static GVariant *
+get_accent_color (void)
+{
+  SettingsBundle *bundle = g_hash_table_lookup (settings, "org.gnome.desktop.interface");
+  AdwAccentColor color;
+  GdkRGBA color_rgba;
+
+  if (!g_settings_schema_has_key (bundle->schema, "accent-color"))
+    color = ADW_ACCENT_COLOR_BLUE;
+  else
+    color = g_settings_get_enum (bundle->settings, "accent-color") + 1;
+
+  adw_accent_color_to_rgba (color, &color_rgba, NULL);
+
+  return g_variant_new ("(ddd)", color_rgba.red, color_rgba.green, color_rgba.blue);
+}
+
 static gboolean
 settings_handle_read_all (XdpImplSettings       *object,
                           GDBusMethodInvocation *invocation,
@@ -177,6 +196,7 @@ settings_handle_read_all (XdpImplSettings       *object,
 
       g_variant_dict_init (&dict, NULL);
       g_variant_dict_insert_value (&dict, "color-scheme", get_color_scheme ());
+      g_variant_dict_insert_value (&dict, "accent-color", get_accent_color ());
 
       g_variant_builder_add (builder, "{s@a{sv}}", "org.freedesktop.appearance", g_variant_dict_end (&dict));
     }
@@ -211,6 +231,13 @@ settings_handle_read (XdpImplSettings       *object,
     {
       g_dbus_method_invocation_return_value (invocation,
                                              g_variant_new ("(v)", get_color_scheme ()));
+      return TRUE;
+    }
+  else if (strcmp (arg_namespace, "org.freedesktop.appearance") == 0 &&
+           strcmp (arg_key, "accent-color") == 0)
+    {
+      g_dbus_method_invocation_return_value (invocation,
+                                             g_variant_new ("(v)", get_accent_color ()));
       return TRUE;
     }
   else if (strcmp (arg_namespace, "org.gnome.desktop.interface") == 0 &&
@@ -291,6 +318,12 @@ on_settings_changed (GSettings             *settings,
     xdp_impl_settings_emit_setting_changed (user_data->self,
                                             "org.freedesktop.appearance", key,
                                             g_variant_new ("v", get_color_scheme ()));
+
+  if (strcmp (user_data->namespace, "org.gnome.desktop.interface") == 0 &&
+      strcmp (key, "accent-color") == 0)
+    xdp_impl_settings_emit_setting_changed (user_data->self,
+                                            "org.freedesktop.appearance", key,
+                                            g_variant_new ("v", get_accent_color()));
 
   if (strcmp (user_data->namespace, "org.gnome.desktop.a11y.interface") == 0 &&
       strcmp (key, "high-contrast") == 0)
